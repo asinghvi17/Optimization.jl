@@ -92,7 +92,7 @@ end
 NLPModels.jl adapter that exposes an `OptimizationCache` as an
 `NLPModels.AbstractNLPModel`.
 """
-struct NLPModelsAdaptor{C, T, HB} <: NLPModels.AbstractNLPModel{T, Vector{T}}
+struct NLPModelsAdaptor{C, T, HB, JB<:AbstractMatrix{T}} <: NLPModels.AbstractNLPModel{T, Vector{T}}
     cache::C
     meta::NLPModels.NLPModelMeta{T, Vector{T}}
     counters::NLPModels.Counters
@@ -100,7 +100,7 @@ struct NLPModelsAdaptor{C, T, HB} <: NLPModels.AbstractNLPModel{T, Vector{T}}
     jac_cols::Vector{Int}
     # Scratch for `cons_j`: overwritten by `jac_coord!` and the `jtprod!`/`jprod!` fallback,
     # so it must never be handed out or relied on between calls.
-    jac_buffer::AbstractMatrix{T}
+    jac_buffer::JB
     hess_rows::Vector{Int}
     hess_cols::Vector{Int}
     hess_buffer::HB  # Can be Vector{T} or Matrix{T}
@@ -187,7 +187,7 @@ function NLPModelsAdaptor(
         hess_buffer = zeros(T, n, n)
     end
 
-    return NLPModelsAdaptor{C, T, typeof(hess_buffer)}(
+    return NLPModelsAdaptor{C, T, typeof(hess_buffer),typeof(jac_buffer)}(
         cache, meta, counters,
         jac_rows, jac_cols, jac_buffer,
         hess_rows, hess_cols, hess_buffer
