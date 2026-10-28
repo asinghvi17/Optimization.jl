@@ -260,7 +260,7 @@ function OptimizationBase.instantiate_function(
     expr = symbolify(f.expr)
     cons_expr = symbolify_exprs(f.cons_expr)
 
-    return OptimizationFunction{true}(
+    return OptimizationFunction{true,SciMLBase.specialization(f)}(
         f.f, SciMLBase.NoAD();
         grad = grad, fg = fg, hess = hess, fgh = fgh, hv = hv,
         cons = cons, cons_j = cons_j, cons_h = cons_h,

@@ -49,7 +49,7 @@ sol = solve!(cache)
 """
 struct OptimizationCache{
         O, IIP, F <: SciMLBase.AbstractOptimizationFunction{IIP},
-        RC, LB, UB, LC, UC, S, P, C, M, V,
+        RC, LB, UB, LC, UC, S, P, C, M, V, SA<:NamedTuple,
     } <:
     SciMLBase.AbstractOptimizationCache
     opt::O
@@ -64,7 +64,7 @@ struct OptimizationCache{
     callback::C
     manifold::M
     analysis_results::AnalysisResults
-    solver_args::NamedTuple
+    solver_args::SA
     verbose::V
 end
 
