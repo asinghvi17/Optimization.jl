@@ -1,11 +1,13 @@
-struct MadNLPProgressLogger{C, P} <: MadNLP.AbstractUserCallback
+struct MadNLPProgressLogger{C, P, Progress} <: MadNLP.AbstractUserCallback
     callback::C
-    progress::Bool
+    progress::Val{Progress}
     maxiters::Union{Nothing, Int}
     p::P
 end
 
-function (cb::MadNLPProgressLogger)(solver::MadNLP.AbstractMadNLPSolver, mode)
+MadNLPProgressLogger(cb,progress::Bool,maxiters,p) = MadNLPProgressLogger(cb,Val(progress),maxiters,p)
+
+function (cb::MadNLPProgressLogger{C,P,Progress})(solver::MadNLP.AbstractMadNLPSolver, mode) where {C,P,Progress}
     iter_count = solver.cnt.k
     obj_value = solver.obj_val
     u = solver.x
@@ -14,7 +16,7 @@ function (cb::MadNLPProgressLogger)(solver::MadNLP.AbstractMadNLPSolver, mode)
         iter = iter_count, u, cb.p, objective = obj_value, original = solver
     )
 
-    if cb.progress
+    if Progress
         maxiters = cb.maxiters
         msg = "objective: " *
             sprint(show, obj_value, context = :compact => true)
