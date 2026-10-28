@@ -43,7 +43,7 @@ export AcceleratedGradientDescent, BFGS, ConjugateGradient, Fminbox,
     Newton, NewtonTrustRegion, OACCEL, ParticleSwarm, SAMIN, SimulatedAnnealing
 
 # Construct a TwiceDifferentiable with Hessian-vector product support for KrylovTrustRegion.
-function _make_hv_objective(f, fg!, hv!, x0)
+Base.@constprop :aggressive function _make_hv_objective(f, fg!, hv!, x0; specialize::Bool = false)
     NLB = Optim.NLSolversBase
     u0_type = eltype(x0)
     F = real(zero(u0_type))
@@ -66,7 +66,7 @@ function _make_hv_objective(f, fg!, hv!, x0)
         f, g!, fg!, nothing, nothing, nothing, nothing, nothing, hv!,
         F, copy(G), F, copy(H), copy(G),
         x_f, x_df, x_jvp, v_jvp, x_h, x_hvp, v_hvp,
-        0, 0, 0, 0, 0
+        0, 0, 0, 0, 0; specialize
     )
 end
 
@@ -75,6 +75,15 @@ SciMLBase.allowsbounds(opt::Optim.AbstractOptimizer) = true
 SciMLBase.allowsbounds(opt::Optim.SimulatedAnnealing) = false
 SciMLBase.requiresbounds(opt::Optim.Fminbox) = true
 SciMLBase.requiresbounds(opt::Optim.SAMIN) = true
+
+# Use OptimizationFunction's existing specialization policy. Keep the Bool at the
+# solve! boundary so a literal override can propagate through the Val barrier.
+Base.@constprop :aggressive function OptimizationBase.solve!(
+        cache::OptimizationCache{O};
+        specialize::Bool = SciMLBase.specialization(cache.f) === SciMLBase.FullSpecialize
+    ) where {O <: Union{Optim.AbstractOptimizer, Optim.Fminbox, Optim.SAMIN, Optim.ConstrainedOptimizer}}
+    return SciMLBase.__solve(cache; specialize)
+end
 
 function _optim_retcode(opt_res)
     if Optim.converged(opt_res)
@@ -211,8 +220,12 @@ function SciMLBase.__init(
     )
 end
 
-function SciMLBase.__solve(cache::OptimizationCache{O}) where {O <: Optim.AbstractOptimizer}
-    local x, cur, state
+Base.@constprop :aggressive function SciMLBase.__solve(cache::OptimizationCache{O};
+        specialize::Bool = SciMLBase.specialization(cache.f) === SciMLBase.FullSpecialize) where {O <: Optim.AbstractOptimizer}
+    return _solve(cache, Val(specialize))
+end
+
+function _solve(cache::OptimizationCache{O}, ::Val{specialize}) where {O <: Optim.AbstractOptimizer, specialize}
     !(cache.opt isa Optim.ZerothOrderOptimizer) && cache.f.grad === nothing &&
         error("Use OptimizationFunction to pass the derivatives or automatically generate them with one of the autodiff backends")
 
@@ -270,7 +283,7 @@ function SciMLBase.__solve(cache::OptimizationCache{O}) where {O <: Optim.Abstra
                 H .*= -one(eltype(H))
             end
         end
-        optim_f = _make_hv_objective(_loss, fg!, hv, cache.u0)
+        optim_f = _make_hv_objective(_loss, fg!, hv, cache.u0; specialize = specialize)
     else
         gg = function (G, θ)
             cache.f.grad(G, θ)
@@ -299,7 +312,7 @@ function SciMLBase.__solve(cache::OptimizationCache{O}) where {O <: Optim.Abstra
                     real(zero(u0_type))
                 ) :
                 similar(cache.f.hess_prototype, u0_type)
-        )
+        ; specialize = specialize)
     end
 
     opt_args = __map_optimizer_args(
@@ -329,13 +342,16 @@ function SciMLBase.__solve(cache::OptimizationCache{O}) where {O <: Optim.Abstra
     )
 end
 
-function SciMLBase.__solve(cache::OptimizationCache{O}) where {
-        O <: Union{
-            Optim.Fminbox, Optim.SAMIN,
-        },
+Base.@constprop :aggressive function SciMLBase.__solve(cache::OptimizationCache{O};
+        specialize::Bool = SciMLBase.specialization(cache.f) === SciMLBase.FullSpecialize) where {
+        O <: Union{Optim.Fminbox, Optim.SAMIN},
     }
-    local x, cur, state
+    return _solve(cache, Val(specialize))
+end
 
+function _solve(cache::OptimizationCache{O}, ::Val{specialize}) where {
+        O <: Union{Optim.Fminbox, Optim.SAMIN}, specialize,
+    }
     iter_counter = Ref(0)
     inner_opt = cache.opt isa Optim.SAMIN ? cache.opt : cache.opt.method
     function _cb(optim_state)
@@ -390,7 +406,7 @@ function SciMLBase.__solve(cache::OptimizationCache{O}) where {
             G .*= -one(eltype(G))
         end
     end
-    optim_f = Optim.OnceDifferentiable(_loss, gg, fg!, cache.u0)
+    optim_f = Optim.OnceDifferentiable(_loss, gg, fg!, cache.u0; specialize = specialize)
 
     opt_args = __map_optimizer_args(
         cache, cache.opt, callback = _cb,
@@ -419,11 +435,17 @@ function SciMLBase.__solve(cache::OptimizationCache{O}) where {
     )
 end
 
-function SciMLBase.__solve(cache::OptimizationCache{O}) where {
+Base.@constprop :aggressive function SciMLBase.__solve(cache::OptimizationCache{O};
+        specialize::Bool = SciMLBase.specialization(cache.f) === SciMLBase.FullSpecialize) where {
         O <:
         Optim.ConstrainedOptimizer,
     }
-    local x, cur, state
+    return _solve(cache, Val(specialize))
+end
+
+function _solve(cache::OptimizationCache{O}, ::Val{specialize}) where {
+        O <: Optim.ConstrainedOptimizer, specialize,
+    }
 
     iter_counter = Ref(0)
     function _cb(optim_state)
@@ -500,7 +522,7 @@ function SciMLBase.__solve(cache::OptimizationCache{O}) where {
                     real(zero(u0_type))
                 ) :
                 similar(cache.f.hess_prototype, u0_type)
-        )
+        ; specialize = specialize)
     else
         Optim.OnceDifferentiable(
             _loss, gg, fg!, cache.u0,
@@ -509,7 +531,7 @@ function SciMLBase.__solve(cache::OptimizationCache{O}) where {
                 cache.u0,
                 real(zero(u0_type))
             )
-        )
+        ; specialize = specialize)
     end
 
     cons_hl! = function (h, θ, λ)

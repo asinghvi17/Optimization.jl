@@ -460,3 +460,16 @@ end
             typeof(OptimizationBase.init(prob, LBFGS(); maxiters = 100))
     end
 end
+
+@testset "NLSolversBase specialization mapping" begin
+    for S in (SciMLBase.FullSpecialize, SciMLBase.NoSpecialize)
+        f = OptimizationFunction{true,S}((x, p) -> sum(abs2, x); grad = (G, x, p) -> (G .= 2 .* x))
+        prob = OptimizationProblem(f, [1.0, 2.0])
+        cache = init(prob, BFGS())
+        @test SciMLBase.specialization(cache.f) === S
+        @test solve!(cache).objective == 0
+        for specialize in (false, true)
+            @test solve!(init(prob, BFGS()); specialize).objective == 0
+        end
+    end
+end
