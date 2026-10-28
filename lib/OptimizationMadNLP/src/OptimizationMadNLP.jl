@@ -9,7 +9,7 @@ using OptimizationNLPModels: NLPModelsAdaptor, build_nlpmodel_meta
 using MadNLP: MadNLP
 using NLPModels: NLPModels
 
-export MadNLPOptimizer
+export MadNLPOptimizer, PreparedMadNLPCache, init_prepared
 
 include("callback.jl")
 
@@ -236,5 +236,7 @@ function SciMLBase.__solve(cache::OptimizationCache{O}) where {O <: MadNLPOptimi
         stats
     )
 end
+
+include("prepared.jl")
 
 end
